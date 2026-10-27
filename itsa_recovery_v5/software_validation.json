@@ -1,0 +1,19 @@
+{
+  "version": 5,
+  "scope": "source-only; static syntax and interface review",
+  "syntax": "AST parse passed; no project imports",
+  "python_files_parsed": 77,
+  "new_tests_written": 26,
+  "tests_executed": false,
+  "simulation_executed": false,
+  "raster_processing_executed": false,
+  "analytical_outputs_generated": false,
+  "class_frequency_improvement_measured": false,
+  "prior_source_hash_checks": {
+    "preserved_v4_hashes.json": 84,
+    "preserved_v3_hashes.json": 66,
+    "preserved_v2_hashes.json": 58,
+    "original_source_hashes.json": 42
+  },
+  "remaining": "Execute written tests later; validate effects, source semantics, pair comparability, object calibration and independent recovery evidence."
+}
