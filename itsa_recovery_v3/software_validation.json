@@ -1,0 +1,20 @@
+{
+  "timestamp_utc": "2026-10-27T21:43:50.304431+00:00",
+  "software_tests_passed": 34,
+  "original_source_files_checked": {
+    "preserved_v2_hashes.json": 58,
+    "original_source_hashes.json": 42
+  },
+  "original_source_unchanged": true,
+  "real_source_pilot_executed": false,
+  "cached_real_pilot_assessment_executed": true,
+  "full_dataset_executed": false,
+  "independent_real_pixel_checks": 100,
+  "independent_class_count_check": "passed",
+  "v2_classifier_reproduction_mismatches": 0,
+  "synthetic_graph_rendered_in_memory": true,
+  "synthetic_geotiff_roundtrip_passed": true,
+  "syntax_check": "passed",
+  "reset_script_parsed_not_executed": true,
+  "remaining": "Zero semantics, acquisition comparability, independently validated thresholds and recovery evidence; complete original-source V3 pilot"
+}
