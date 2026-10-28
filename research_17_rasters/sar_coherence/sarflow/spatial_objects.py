@@ -5,9 +5,10 @@ they are an explicit segmentation constraint, not inferred landscape boundaries.
 """
 import math
 import numpy as np
-from scipy.ndimage import label
+from scipy.ndimage import label, minimum, maximum, sum_labels
 from .itsa import median
 from .recovery import assess, Assessment
+from .spatial_enhancement import evidence_score
 
 CROSS = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]])
 
@@ -68,7 +69,51 @@ def segment(pre, noise, pre_change, mask, barriers, cell, row, col, width, c):
                     if gid > np.iinfo("uint32").max:
                         raise ValueError("Analysis grid exceeds uint32 region-ID capacity.")
                     target[rr, cc] = gid
+    if getattr(c, 'ENABLE_SPATIAL_REGION_GROWTH', False):
+        ids = grow_pre_regions(ids, features, barriers, cell*cell, c)
     return ids
+
+
+def grow_pre_regions(ids, features, barriers, target_pixels, c):
+    """Merge adjacent PRE-similar fragments toward a soft target, within domain.
+
+    Full feature ranges, not just means, limit heterogeneity. No recovery labels,
+    event data, POST values or inferred vegetation classes enter this operation.
+    """
+    keys = np.unique(ids[ids > 0])
+    if keys.size < 2:
+        return ids
+    # ndimage labels are dense locally: global UInt32 IDs must not allocate LUTs.
+    dense = np.zeros_like(ids, dtype='int32')
+    dense[ids > 0] = np.searchsorted(keys, ids[ids > 0])+1
+    indices = np.arange(1, len(keys)+1)
+    counts = sum_labels(np.ones(ids.shape, 'uint8'), dense, indices)
+    low = np.stack([minimum(f, dense, indices) for f in features], axis=1)
+    high = np.stack([maximum(f, dense, indices) for f in features], axis=1)
+    group = minimum(barriers, dense, indices)
+    parent = np.arange(len(keys))
+    def root(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+    edges = neighbors(dense)
+    edges.sort(key=lambda pair: float(np.max(np.abs((low[pair[0]-1]+high[pair[0]-1])-
+                                                   (low[pair[1]-1]+high[pair[1]-1])))))
+    tolerance = np.asarray(c.PRE_FEATURE_BIN_WIDTHS)
+    for left, right in edges:
+        a, b = root(left-1), root(right-1)
+        if a == b or group[a] != group[b] or counts[a]+counts[b] > target_pixels:
+            continue
+        lo, hi = np.minimum(low[a], low[b]), np.maximum(high[a], high[b])
+        if np.any(hi-lo > tolerance):
+            continue
+        a, b = min(a,b), max(a,b)
+        parent[b] = a
+        counts[a] += counts[b]
+        low[a], high[a] = lo, hi
+    lookup = np.r_[0, [keys[root(i)] for i in range(len(keys))]].astype('uint32')
+    return lookup[dense]
 
 
 def aggregate(stack, member, c):
@@ -131,6 +176,9 @@ def regularize(stack, ids, records, barriers, obs, c, pixel_area):
         a, b = result_records[left][0], result_records[right][0]
         code = int(a.classes[0])
         if code not in (1, 2, 3, 4) or code != int(b.classes[0]):
+            continue
+        if (evidence_score(a,c)[0] >= c.EVIDENCE_PROTECTION_SCORE or
+                evidence_score(b,c)[0] >= c.EVIDENCE_PROTECTION_SCORE):
             continue
         # Retain small high-confidence regions as independent analytical units.
         if not (int(a.quality[0]) & 3 and int(b.quality[0]) & 3):

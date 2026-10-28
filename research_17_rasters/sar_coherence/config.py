@@ -24,9 +24,9 @@ Post6 = r""
 Post7 = r""
 Post8 = r""
 # OUTPUT DIRECTORY: must be inside PROJECT_ROOT; use a NEW folder for each run.
-Output_Folder = r""
+Output_Folder = str(Path(__file__).resolve().parent.parent)
 # OPTIONAL STUDY AREA / ZONAL POLYGONS: polygon KML, WGS84 lon,lat.
-Study_Area = r""
+Study_Area = str(Path(__file__).resolve().parent.parent / "Boundary" / "INFANTA_BOUNDARY.kml")
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PATHS = {
@@ -112,11 +112,13 @@ SOURCE_VALIDITY_NOTES = ""  # explain declared NoData, zeros and any prior spati
 
 # PRE-only, four-connected regions in physically sized, fixed analysis cells.
 # Cells are independent of I/O tiles. Minimum area flags objects; never dilates them.
-TARGET_REGION_AREA_M2 = 10000.0
-MIN_REGION_AREA_M2 = 2000.0
-MAX_REGION_AREA_M2 = 40000.0
+MIN_MAPPING_AREA_M2 = 4000.0
+TARGET_REGION_AREA_M2 = 30000.0
+MAX_REGION_AREA_M2 = 90000.0
+MIN_REGION_AREA_M2 = MIN_MAPPING_AREA_M2  # compatibility alias
 PRE_FEATURE_BIN_WIDTHS = (0.10, 0.05, 0.10)  # PRE median, MAD sigma, PRE fitted total change
-OBJECT_MIN_VALID_FRACTION = 0.80
+MIN_PER_DATE_VALID_COVERAGE = 0.80
+OBJECT_MIN_VALID_FRACTION = MIN_PER_DATE_VALID_COVERAGE
 OBJECT_MIN_VALID_PIXELS = 3  # capped at the actual region member count
 ANCILLARY_REGION_BARRIERS = r""  # optional exact-grid positive integer labels; 0=excluded
 ENABLE_SPATIAL_REGULARIZATION = True
@@ -126,3 +128,24 @@ EXPORT_RAW_CLASSIFICATION = True
 EXPORT_REGULARIZED_CLASSIFICATION = True
 ENABLE_THRESHOLD_SENSITIVITY_REPORT = True
 ITSA_LOSS_SENSITIVITY = (0.01, 0.02, 0.03, 0.05, 0.10)
+
+# Evidence-guided enhancement. No new lower disturbance threshold is introduced.
+EVIDENCE_PROTECTION_SCORE = 0.80  # normalized heuristic, NOT a probability
+ENABLE_SPATIAL_REGION_GROWTH = True
+ENABLE_NEIGHBOR_CLASS_ASSIGNMENT = True
+ENABLE_BUILTUP_PRIORITY = True
+PRESERVE_ORIGINAL_CLASSIFICATION = True
+EXPORT_SPATIALLY_ENHANCED_CLASSIFICATION = True
+NEIGHBOR_RADIUS_M = 45.0  # bounded physical search; connected paths only
+NEIGHBOR_MIN_AGREEMENT = 0.80
+NEIGHBOR_SIGNATURE_TOLERANCE = 0.05  # coherence units, not class codes
+# Only independently model-supported pixels may be reassigned. NoData and
+# unresolved/conflicting pixel fits cannot be promoted by a neighbor.
+BUILTUP_MASK = r""  # verified exact-grid binary TIFF, polygon KML or GeoJSON
+BUILTUP_MASK_NOTES = ""  # provenance/date/meaning; required when a mask is supplied
+BUILTUP_GEOJSON_CRS = "EPSG:4326"  # explicit override for non-RFC7946 sources
+BARANGAY_BOUNDARY = Study_Area
+BARANGAY_NAME_FIELD = "ADM4_EN"
+BARANGAY_CODE_FIELD = "ADM4_PCODE"
+ENABLE_BARANGAY_OUTPUTS = True
+OUTPUT_VERSIONED_RUNS = True  # shared timestamp beneath the three output roots

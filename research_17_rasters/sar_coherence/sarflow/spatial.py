@@ -43,7 +43,8 @@ def read_zones(path: str, crs: rasterio.crs.CRS, root: Path) -> list[tuple[str, 
         if polygons:
             merged = unary_union(polygons)
             projected = transform(project, merged)
-            name = pm.findtext("{*}name", f"zone_{i+1}")
+            attributes = {e.get('name'): e.text for e in pm.findall('.//{*}SimpleData')}
+            name = attributes.get('ADM4_EN') or pm.findtext("{*}name", f"zone_{i+1}")
             zones.append((f"{i+1:03d}_{name}", mapping(projected)))
     if not zones:
         raise ValueError("KML has no polygon Placemarks. Points/lines are not study boundaries.")

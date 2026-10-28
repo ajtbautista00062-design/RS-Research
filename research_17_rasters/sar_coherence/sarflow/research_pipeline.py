@@ -19,9 +19,26 @@ from .spatial_objects import (cell_sizes, pre_change_only, segment, region_asses
 from .itsa_diagnostics import Diagnostics, write_records
 from .sampling import Sample
 from .itsa_zonal import ZonalSummary
+from .output_layout import create_layout
+from .analysis_boundaries import load_barangays, owners, BuiltupLayer, combine_strata
+from .spatial_enhancement import evidence_score
 
 
 def validate_settings(c):
+    # Public settings are authoritative; older function interfaces retain aliases.
+    c.MIN_REGION_AREA_M2 = c.MIN_MAPPING_AREA_M2
+    c.OBJECT_MIN_VALID_FRACTION = c.MIN_PER_DATE_VALID_COVERAGE
+    if not c.PRESERVE_ORIGINAL_CLASSIFICATION:
+        raise ValueError("Original classification must be retained for comparison.")
+    if c.ENABLE_BARANGAY_OUTPUTS and c.ALL_TOUCHED:
+        raise ValueError("Barangay exports require ALL_TOUCHED=False for consistent pixel-center ownership.")
+    if not .8 <= c.EVIDENCE_PROTECTION_SCORE <= 1:
+        raise ValueError("Evidence protection must be between 0.80 and 1.00.")
+    if not 0 < c.NEIGHBOR_MIN_AGREEMENT <= 1:
+        raise ValueError("Neighbor agreement must be in (0,1].")
+    if (not np.isfinite(c.NEIGHBOR_RADIUS_M) or not np.isfinite(c.NEIGHBOR_SIGNATURE_TOLERANCE)
+            or c.NEIGHBOR_RADIUS_M <= 0 or c.NEIGHBOR_SIGNATURE_TOLERANCE <= 0):
+        raise ValueError("Neighbor distance and signature tolerance must be positive.")
     if c.CLASSIFICATION_MODE not in ("pixel_itsa", "object_itsa", "spatially_regularized_itsa"):
         raise ValueError("Unsupported CLASSIFICATION_MODE")
     if not c.USE_FITTED_ITSA_FOR_RECOVERY or c.RECOVERY_REFERENCE != "pre_median":
@@ -115,17 +132,14 @@ def run(c):
     validate_settings(c)
     obs = validate(c)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-    out = local_path(Path(c.Output_Folder) / f"itsa_{obs[0].start:%Y%m%d}_{obs[-1].end:%Y%m%d}_{stamp}", c.PROJECT_ROOT)
-    out.mkdir(parents=True, exist_ok=False)
-    figures = out / "Time Series Graphs"
-    rasters = out / "Recovery Map Raster File"
-    figures.mkdir()
-    rasters.mkdir()
+    layout = create_layout(c, f"itsa_{obs[0].start:%Y%m%d}_{obs[-1].end:%Y%m%d}_{stamp}")
+    out, figures, rasters = layout.tables, layout.graphs, layout.rasters
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s",
                         handlers=[logging.FileHandler(out / "processing.log", encoding="utf-8"), logging.StreamHandler()], force=True)
     logging.warning("Operational ITSA: thresholds provisional; source semantics confirmed=%s; no spatial filling.", c.SOURCE_VALIDITY_CONFIRMED)
     diagnostic, sample = Diagnostics(), Sample(c.SAMPLE_PIXELS, c.RANDOM_SEED)
     study_count = 0
+    observation_counts = np.zeros(len(obs), dtype='int64')
     object_counts = {"object": np.zeros(6, dtype="int64"), "regularized": np.zeros(6, dtype="int64")}
     with ExitStack() as context:
         srcs = [context.enter_context(rasterio.open(o.path)) for o in obs]
@@ -139,6 +153,9 @@ def run(c):
             raise ValueError("Reference grid exceeds available region-ID precision.")
         zones = read_zones(c.Study_Area, ref.crs, c.PROJECT_ROOT) if c.Study_Area else []
         geoms = [g for _, g in zones]
+        barangays, boundary_report = load_barangays(c.BARANGAY_BOUNDARY, ref.crs, c)
+        (out / 'barangay_boundary_audit.json').write_text(json.dumps(boundary_report, indent=2), encoding='utf-8')
+        builtup_source = BuiltupLayer(context, ref, c)
         zonal = {name: ZonalSummary(name) for name, _ in zones}
         barrier_src = None
         if c.ANCILLARY_REGION_BARRIERS:
@@ -149,7 +166,7 @@ def run(c):
             if not np.issubdtype(np.dtype(barrier_src.dtypes[0]), np.integer):
                 raise ValueError("Ancillary barriers must be positive integer categorical IDs; zero is excluded.")
         vrts = [context.enter_context(aligned(src, ref, c)) for src in srcs]
-        outputs = create_outputs(context, rasters, ref, c)
+        outputs = create_outputs(context, rasters, ref, c, obs)
         writers = {name: [None, context.enter_context((out / f"{name}_region_statistics.csv").open("w", newline="", encoding="utf-8"))]
                    for name in ("raw", "regularized")}
         _, domain = cell_sizes(pixel_area, c)
@@ -163,14 +180,22 @@ def run(c):
             barriers = (barrier_src.read(1, window=win, masked=True).filled(0)
                         if barrier_src else np.ones(shape, dtype="uint8"))
             analysis_mask = mask & (barriers > 0)
+            landcover = builtup_source.read(win, window_transform(win, ref.transform))
+            strata = combine_strata(barriers, landcover, c.ENABLE_BUILTUP_PRIORITY)
+            strata[~analysis_mask] = 0
+            if strata.max() > np.iinfo('uint32').max:
+                raise ValueError('Combined ancillary IDs exceed uint32; recode the external labels.')
+            ownership = owners(barangays, shape, window_transform(win, ref.transform))
+            ownership[~mask] = 0
             stack[:, ~analysis_mask] = np.nan
+            observation_counts += np.isfinite(stack).sum(axis=(1,2))
             raw = assess(stack, obs, c)
             raw.reasons[~analysis_mask] = 11
             raw.quality[~analysis_mask] = 65535
             legacy = calculate_fraction(stack, obs, c).classes
             legacy = np.where(legacy == -9999, 0, legacy).astype("uint8")
             obj, reg, ids, merged, records = object_window(stack, raw, win, ref, analysis_mask,
-                                                         barriers, obs, c, pixel_area, writers, diagnostic)
+                                                         strata, obs, c, pixel_area, writers, diagnostic)
             primary = {"pixel_itsa": raw, "object_itsa": obj, "spatially_regularized_itsa": reg}[c.CLASSIFICATION_MODE]
             products = dict(pixel=raw.classes, legacy=legacy, object=obj.classes, regularized=reg.classes)
             if any(not np.isin(values, range(6)).all() for values in products.values()):
@@ -185,6 +210,17 @@ def run(c):
                 if name in outputs:
                     write(outputs[name], values, win)
             write(outputs["ITSA_Metrics"], np.stack([primary.metrics[key] for key in METRICS]), win)
+            write(outputs['Original_ITSA_Recovery_Classification'], primary.classes, win)
+            write(outputs['Spatial_Recovery_Regions'], merged if c.CLASSIFICATION_MODE == 'spatially_regularized_itsa' else ids, win)
+            write(outputs['Original_Evidence_Confidence'], np.where(primary.classes > 0, evidence_score(primary, c), np.nan), win)
+            write(outputs['Raw_ITSA_Metrics'], np.stack([raw.metrics[k] for k in METRICS]), win)
+            write(outputs['Raw_ITSA_Reasons'], raw.reasons, win)
+            write(outputs['Raw_ITSA_Quality_Flags'], raw.quality, win)
+            write(outputs['Spatial_Strata'], strata, win)
+            write(outputs['Builtup_Status'], np.where(mask, landcover, -9999), win)
+            write(outputs['Barangay_Owner'], ownership, win)
+            write(outputs['Aligned_Coherence_Observations'], stack, win)
+            write(outputs['Valid_Data_Coverage'], np.where(analysis_mask[None], np.isfinite(stack), 255), win)
             diagnostic.add(products, primary, mask)
             for name, geom in zones:
                 zm = mask_for([geom], shape, window_transform(win, ref.transform), c.ALL_TOUCHED)
@@ -199,6 +235,10 @@ def run(c):
             logging.info("Completed input window row=%d col=%d; objects=%d", win.row_off, win.col_off, len(records))
         paths = {key: Path(ds.name) for key, ds in outputs.items()}
         geometry = (ref.crs, ref.transform, ref.shape)
+    from .enhancement_reports import enhance_outputs
+    enhanced_summary = enhance_outputs(paths, layout, c)
+    from .barangay_outputs import export_barangays
+    export_barangays(paths, barangays, layout, obs, c)
     # Closed-file header checks only; class/count QA was accumulated during writing.
     for key, path in paths.items():
         with rasterio.open(path) as check:
@@ -208,21 +248,32 @@ def run(c):
     if any(int(counts.sum()) != study_count for counts in diagnostic.counts.values()):
         raise RuntimeError("Class coverage totals do not equal the study-mask denominator.")
     pd.DataFrame(rows).to_csv(out / "class_area_statistics.csv", index=False)
+    pd.DataFrame([dict(observation=o.name, phase=o.phase, master=o.master, slave=o.slave,
+                      reference=o.reference, valid_pixels=int(n), study_pixels=study_count,
+                      valid_fraction=n/study_count if study_count else np.nan)
+                  for o,n in zip(obs,observation_counts)]).to_csv(out / 'Valid_Data_Coverage.csv', index=False)
     if zonal:
         pd.DataFrame([z.row() for z in zonal.values()]).to_csv(out / "zonal_recovery_statistics.csv", index=False)
     pd.DataFrame([dict(mode=mode, code=code, objects=int(n)) for mode, counts in object_counts.items()
                   for code, n in enumerate(counts)]).to_csv(out / "object_class_counts.csv", index=False)
     diagnostic.export(out, pixel_area)
     from .itsa_figures import render_itsa
-    render_itsa(sample, obs, figures, c)
+    render_itsa(sample, obs, figures, c, out)
+    from .enhancement_reports import render_comparison
+    render_comparison(enhanced_summary, figures, c)
     source_hashes = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in Path(__file__).parent.glob("*.py")}
     manifest = dict(settings={k: v for k, v in vars(c).items() if k.isupper() or k in ("Study_Area", "Output_Folder")},
                     dates=[dict(name=o.name, phase=o.phase, path=str(o.path), master=str(o.master), slave=str(o.slave),
                                 reference=str(o.reference)) for o in obs], classes=CLASSES, quality=QUALITY,
                     reasons=REASONS, code_sha256=source_hashes, study_pixels=study_count, pixel_area_m2=pixel_area,
-                    regularization="same-class, similar-indicator, low-confidence object merging with pooled refit",
+                    regularization="same-class pooled object refit; separately exported connected-neighbor refinement requiring own pixel ITSA support",
                     segmentation="PRE-only four-connected bins in fixed physical domains; no inferred river/coast barriers",
                     input_count=len(obs), scientific_status="exploratory until source semantics, thresholds and external evidence validated")
+    manifest.update(output_roots=dict(rasters=str(rasters), graphs=str(figures), csv=str(out)),
+                    barangay_boundary_audit=boundary_report,
+                    enhancement_threshold_adjustment=False,
+                    builtup_status='external verified mask' if c.BUILTUP_MASK else 'unknown; not inferred from coherence',
+                    protection_score='normalized heuristic; not a calibrated probability')
     (out / "run_manifest.json").write_text(json.dumps(manifest, indent=2, default=str), encoding="utf-8")
     logging.info("Finished: %s", out)
     return 0

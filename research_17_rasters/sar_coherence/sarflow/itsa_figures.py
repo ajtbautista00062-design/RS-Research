@@ -5,7 +5,7 @@ from .recovery import assess
 from .temporal import day_offsets
 
 
-def render_itsa(sample, obs, folder, c):
+def render_itsa(sample, obs, folder, c, csv_folder=None):
     if not sample.count:
         import logging
         logging.warning("No complete common-pixel support: ITSA sample graph not generated; inspect coverage and per-date support.")
@@ -63,6 +63,10 @@ def render_itsa(sample, obs, folder, c):
         for ext in c.FIGURE_FORMATS:
             fig.savefig(folder / f"ITSA_{obs[0].start:%Y%m%d}_{obs[-1].end:%Y%m%d}.{ext}",
                         dpi=c.FIGURE_DPI, bbox_inches="tight")
+            fig.savefig(folder / f"ITSA_Fitted_Trends.{ext}", dpi=c.FIGURE_DPI, bbox_inches="tight")
         plt.close(fig)
     pd.DataFrame({"date": dates, "phase": phases, "median": series, "spatial_q25": q[0],
-                  "spatial_q75": q[1]}).to_csv(folder / "itsa_plot_observations.csv", index=False)
+                  "spatial_q75": q[1]}).to_csv((csv_folder or folder) / "itsa_plot_observations.csv", index=False)
+    pd.DataFrame([dict(scope='separate aggregate median fit on common-pixel sample',
+                       **{k:float(v[0]) for k,v in result.metrics.items()})]).to_csv(
+                           (csv_folder or folder) / 'ITSA_Regression_Results.csv', index=False)

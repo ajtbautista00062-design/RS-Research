@@ -5,8 +5,8 @@ import rasterio
 from .spatial import export_profile
 from .recovery import CLASSES, QUALITY, REASONS
 
-COLORS = {0: (0, 0, 0, 0), 1: (0, 158, 115, 255), 2: (230, 171, 2, 255),
-          3: (213, 94, 0, 255), 4: (0, 114, 178, 255), 5: (153, 153, 153, 255)}
+COLORS = {0: (0, 0, 0, 0), 1: (22, 124, 128, 255), 2: (244, 201, 93, 255),
+          3: (199, 58, 73, 255), 4: (216, 221, 226, 255), 5: (140, 120, 163, 255)}
 METRICS = ("baseline", "modeled_level_loss", "observed_event_loss", "post_slope",
            "modeled_initial", "modeled_final", "baseline_deficit", "modeled_progress",
            "recovery_fraction", "crossing_days", "adaptive_loss_threshold", "rmse",
@@ -28,7 +28,7 @@ def unit(name):
     return "coherence units"
 
 
-def create_outputs(context, folder, ref, c):
+def create_outputs(context, folder, ref, c, observations=None):
     outputs = {}
     definitions = {"ITSA_Recovery_Classes": ("uint8", 0, 1),
                    "Raw_Pixel_ITSA_Classes": ("uint8", 0, 1),
@@ -42,6 +42,28 @@ def create_outputs(context, folder, ref, c):
                    "ITSA_Quality_Flags": ("uint16", 65535, 1),
                    "ITSA_Exclusion_Reasons": ("uint8", 255, 1),
                    "ITSA_Metrics": ("float32", c.NODATA, len(METRICS))}
+    if observations is not None:
+        definitions.update({
+            "Original_ITSA_Recovery_Classification": ("uint8", 0, 1),
+            "Enhanced_ITSA_Recovery_Classification": ("uint8", 0, 1),
+            "Spatial_Recovery_Regions": ("uint32", 0, 1),
+            "Evidence_Confidence": ("float32", c.NODATA, 1),
+            "Original_Evidence_Confidence": ("float32", c.NODATA, 1),
+            "Classification_Changes": ("uint8", 255, 3),
+            "Valid_Data_Coverage": ("uint8", 255, len(observations)),
+            "Aligned_Coherence_Observations": ("float32", c.NODATA, len(observations)),
+            "Raw_ITSA_Metrics": ("float32", c.NODATA, len(METRICS)),
+            "Raw_ITSA_Reasons": ("uint8", 255, 1),
+            "Raw_ITSA_Quality_Flags": ("uint16", 65535, 1),
+            "Enhanced_ITSA_Quality_Flags": ("uint16", 65535, 1),
+            "Enhanced_ITSA_Reasons": ("uint8", 255, 1),
+            "Spatial_Strata": ("uint32", 0, 1),
+            "Builtup_Status": ("int16", -9999, 1),
+            "Barangay_Owner": ("uint16", 0, 1),
+            "ITSA_Disturbance_Magnitude": ("float32", c.NODATA, 1),
+            "ITSA_Recovery_Magnitude": ("float32", c.NODATA, 1),
+            "ITSA_Recovery_Fraction": ("float32", c.NODATA, 1),
+            "Enhanced_ITSA_Metrics": ("float32", c.NODATA, len(METRICS))})
     if not c.EXPORT_REGULARIZED_CLASSIFICATION:
         definitions = {k: v for k, v in definitions.items() if not k.startswith(("Spatially_Regularized", "Regularized_", "Regularization_"))}
     for name, (dtype, nodata, count) in definitions.items():
@@ -54,16 +76,33 @@ def create_outputs(context, folder, ref, c):
                        classification_mode=c.CLASSIFICATION_MODE, source_validity_confirmed=c.SOURCE_VALIDITY_CONFIRMED,
                        source_validity_notes=c.SOURCE_VALIDITY_NOTES, spatial_filling="none",
                        quality_flags=json.dumps(QUALITY), reasons=json.dumps(REASONS))
-        if name.endswith("Classes"):
+        if name.endswith(("Classes", "Classification")):
             ds.write_colormap(1, COLORS)
             ds.update_tags(class_definitions=json.dumps(CLASSES))
             if name.startswith("Legacy"):
                 ds.update_tags(method="legacy observed PRE/event/POST comparison; not ITSA",
                                class_definitions="1 recovered; 2 partial; 3 not recovered; 4 no loss; 0 unavailable")
         for band in range(1, count+1):
-            key = METRICS[band-1] if name == "ITSA_Metrics" else name
+            key = METRICS[band-1] if name.endswith("ITSA_Metrics") else name
+            if name in ("Valid_Data_Coverage", "Aligned_Coherence_Observations"):
+                o = observations[band-1]
+                key = f"{o.name}_{o.start:%Y%m%d}_{o.end:%Y%m%d}"
+                ds.update_tags(band, master=str(o.master), slave=str(o.slave), phase=o.phase,
+                               units="0 missing / 1 observed" if name == "Valid_Data_Coverage" else "coherence")
+            if name == "Classification_Changes":
+                key = ("original_class", "enhanced_class", "change_reason")[band-1]
             ds.set_band_description(band, key)
-            ds.update_tags(band, units=unit(key) if name == "ITSA_Metrics" else "code")
+            if name not in ("Valid_Data_Coverage", "Aligned_Coherence_Observations"):
+                ds.update_tags(band, units=unit(key) if name.endswith("ITSA_Metrics") else "code")
+        if name in ("Evidence_Confidence", "Original_Evidence_Confidence"):
+            ds.update_tags(score="min(temporal completeness, 1/(1+uncertainty/effect_scale)); not probability")
+            ds.update_tags(1, units='dimensionless score [0,1]; not probability')
+        if name == 'Builtup_Status':
+            ds.update_tags(1, units='-1 unknown; 0 externally mapped non-built-up; 1 externally mapped built-up')
+        if name in ('Spatial_Recovery_Regions','Spatial_Object_ID','Regularized_Object_ID'):
+            ds.update_tags(1, units='analytical object identifier; not a recovery class')
+        if name == "Classification_Changes":
+            ds.update_tags(reasons="0 unchanged; 1 own pixel ITSA plus connected neighborhood; 255 NoData")
     return outputs
 
 
