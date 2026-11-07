@@ -1,0 +1,70 @@
+<!DOCTYPE qgis PUBLIC 'http://mrcc.com/qgis.dtd' 'SYSTEM'>
+<qgis version="4.2.3-Belém do Pará">
+  <identifier>phl_admbnda_adm4_psa_namria_20231106</identifier>
+  <parentidentifier></parentidentifier>
+  <language>ENG</language>
+  <type>dataset</type>
+  <title>PHILIPPINES (THE): Admin Level 4 Boundaries</title>
+  <abstract>The dataset represents the barangays of Philippines
+
+Administrative level 4 boundaries of the Philippines</abstract>
+  <keywords vocabulary="Search keys">
+    <keyword>ADMINISTRATIVE DIVISIONS</keyword>
+    <keyword>COMMON OPERATIONAL DATASET - COD</keyword>
+    <keyword>GEODATA</keyword>
+  </keywords>
+  <contact>
+    <contactAddress>
+      <type></type>
+      <address>1180 E. Broad St.</address>
+      <city>Athens</city>
+      <administrativearea>Georgia</administrativearea>
+      <postalcode>30602-5418</postalcode>
+      <country>US</country>
+    </contactAddress>
+    <name>Joseph Childs</name>
+    <organization>ITOS - University of Georgia</organization>
+    <position>Staff</position>
+    <voice>(706) 542-7766</voice>
+    <fax></fax>
+    <email>gist-admin@cviog.itos.uga.edu</email>
+    <role></role>
+  </contact>
+  <links/>
+  <history>Layer was downloaded by ITOS from a link from UNOCHA. It was then analyzed by ITOS for errors. Those errors were corrected and then the layer was sent back to UNOCHA as a feature class within a file geodatabase. The following was found and fixed by ITOS: 1. Created and populated Admin0 name field with UN Short Name "Philippines (the)". Created and populated Admin0 p-code field with 2-letter ISO code 2. Created and populated reference name field 3. Admin1-3 names converted from ALL CAPS to Proper Case 4. 22 Admin4 p-codes had a value of "0". "0" p-codes replaced with values from Excel document "2020 CPH Total Popn Brgy_Admin4_New Pcode.xlsx" 5. Holes not determining admin boundary lines were filled 6. 2 Admin3 units with identical attribution ("CITY OF MANILA" with Admin3 p-code "PH133901000") existed side by side. As instructed by UNOCHA, ITOS merged the units in the Admin3 layer. P-codes for Admin4 units in the Admin3 unit were re-constructed with unique values. 7. 2,217 multipart errors were found and fixed. 8. Admin4 "Manila North Cemetery" had inconsistent admin p-code attribution where the Admin3 p-code was "PH133901000" and Admin2 p-code "PH137500000". The Admin2 p-code was corrected to "PH13039" 9. Admin2 features named "METROPOLITAN MANILA" bordered each other in Admin1 "NATIONAL CAPITAL REGION (NCR)". They have been given unique names from previous COD 10. The 2 Admin4 "Unclaimed Area under Jurisdiction of Zamboanga City" features were merged into one multipart feature. 11. 77 gap errors and 15 overlap errors were found and fixed,</history>
+  <dates>
+    <date type="Created" value="2022-11-09T00:00:00"/>
+    <date type="Published" value="2023-11-06T00:00:00"/>
+  </dates>
+  <fees></fees>
+  <constraints type="Limitations of use">See the COD/FOD Registry Terms of Use. This does not replace any terms of use information provided with the dataset.</constraints>
+  <encoding></encoding>
+  <crs>
+    <spatialrefsys nativeFormat="Wkt">
+      <wkt>GEOGCRS["WGS 84",ENSEMBLE["World Geodetic System 1984 ensemble",MEMBER["World Geodetic System 1984 (Transit)"],MEMBER["World Geodetic System 1984 (G730)"],MEMBER["World Geodetic System 1984 (G873)"],MEMBER["World Geodetic System 1984 (G1150)"],MEMBER["World Geodetic System 1984 (G1674)"],MEMBER["World Geodetic System 1984 (G1762)"],MEMBER["World Geodetic System 1984 (G2139)"],MEMBER["World Geodetic System 1984 (G2296)"],ELLIPSOID["WGS 84",6378137,298.257223563,LENGTHUNIT["metre",1]],ENSEMBLEACCURACY[2.0]],PRIMEM["Greenwich",0,ANGLEUNIT["degree",0.0174532925199433]],CS[ellipsoidal,2],AXIS["geodetic latitude (Lat)",north,ORDER[1],ANGLEUNIT["degree",0.0174532925199433]],AXIS["geodetic longitude (Lon)",east,ORDER[2],ANGLEUNIT["degree",0.0174532925199433]],USAGE[SCOPE["Horizontal component of 3D system."],AREA["World."],BBOX[-90,-180,90,180]],ID["EPSG",4326]]</wkt>
+      <proj4>+proj=longlat +datum=WGS84 +no_defs</proj4>
+      <srsid>3452</srsid>
+      <srid>4326</srid>
+      <authid>EPSG:4326</authid>
+      <description>WGS 84</description>
+      <projectionacronym>longlat</projectionacronym>
+      <ellipsoidacronym>EPSG:7030</ellipsoidacronym>
+      <geographicflag>true</geographicflag>
+    </spatialrefsys>
+  </crs>
+  <extent>
+    <spatial crs="EPSG:4326" dimensions="2" maxx="126.60496600000000456" maxy="21.12188499999999891" maxz="0" minx="114.27789199999999425" miny="4.58729399999999998" minz="0"/>
+    <temporal>
+      <period>
+        <start>2023-11-05T16:00:00Z</start>
+        <end></end>
+      </period>
+    </temporal>
+    <temporal>
+      <period>
+        <start></start>
+        <end></end>
+      </period>
+    </temporal>
+  </extent>
+</qgis>

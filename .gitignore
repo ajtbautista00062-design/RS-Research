@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.runtime_matplotlib/
+.mplconfig/
+.venv/
+Results/
+*.tif
+*.tif.aux.xml
+*.tif.ovr
