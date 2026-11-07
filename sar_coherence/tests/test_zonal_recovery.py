@@ -29,6 +29,19 @@ class ZonalRules(unittest.TestCase):
         self.assertEqual(r.reasons[-1], 4)
         self.assertTrue(r.quality[4] & 8)  # late coherence above baseline + tolerance
 
+    def test_rri_classes_follow_itsa_classes(self):
+        r = self.classify(
+            series([.30, .31, .30], .18, [.24, .29, .30]),   # ITSA 1, within tolerance -> RRI 4
+            series([.30, .31, .30], .20, [.33, .36, .37]),   # ITSA 1, above baseline + tol -> RRI 5
+            series([.30, .31, .30], .15, [.18, .21, .22]),   # ITSA 2 -> RRI 3
+            series([.30, .31, .30], .15, [.16, .15, .15]),   # ITSA 3, no improvement -> RRI 2
+            series([.30, .31, .30], .15, [.14, .12, .12]),   # ITSA 3, below trough -> RRI 1
+            series([.30, .31, .30], .30, [.30, .31, .30]),   # ITSA 4 -> RRI 0
+            series([.05, .06, .05], .04, [.05, .05, .06]),   # ITSA 5 -> RRI 0
+        )
+        self.assertEqual(r.classes.tolist(), [1, 1, 2, 3, 3, 4, 5])
+        self.assertEqual(r.metrics["rri_class"].tolist(), [4, 5, 3, 2, 1, 0, 0])
+
     def test_missing_event_is_indeterminate(self):
         y = series([.30, .31, .30], np.nan, [.24, .29, .30])
         r = self.classify(y)

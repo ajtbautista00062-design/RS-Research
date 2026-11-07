@@ -37,6 +37,11 @@ loss threshold, tol = RECOVERY_TOLERANCE, k = LATE_POST_CONFIRMATIONS)
                                             -> 3 (post-event decline, evidence 3)
 - Otherwise                                 -> 4 No detectable event-associated loss
 
+Zonal RRI value = (late - trough) / (B - trough) for disturbed zones. The zonal RRI
+interpretation classes use the same rules as the ITSA classes: ITSA 1 -> RRI 4
+(or 5 when late > B + tol), ITSA 2 -> RRI 3, ITSA 3 -> RRI 2 (or 1 when late is
+below the trough, or for post-event decline), ITSA 4/5/0 -> RRI 0.
+
 Differences from the original pixel/object rules are deliberate and documented:
 no indecision margins between adjacent classes, the observed event pair counts
 as disturbance evidence (the original treated an event dip followed by a
@@ -65,7 +70,7 @@ from rasterio.windows import Window, transform as window_transform
 
 from .itsa import fit_itsa, median
 from .recovery import baseline_eligibility
-from .rri import calculate, INTERPRETATION, STATUS
+from .rri import calculate, STATUS
 from .study_inputs import observations, effective_settings
 
 CLASSES = {0: "NoData", 1: "Coherence recovered", 2: "Partially recovered",
@@ -95,7 +100,10 @@ COLORS = {
     "reason": {0: ("#1a9641", 255), 1: ("#000000", 0), 2: ("#fdae61", 255), 3: ("#a50026", 255),
                4: ("#7b3294", 255), 12: ("#f4a582", 255), 255: ("#000000", 0)},
 }
-LABELS = {"class": CLASSES, "rri": {0: "NoData / RRI not valid", **{k: v for k, v in INTERPRETATION.items() if k}},
+RRI_CLASSES = {0: "No detectable loss / Indeterminate / NoData", 1: "Further coherence degradation",
+               2: "No measurable recovery", 3: "Partial coherence recovery",
+               4: "Return to baseline (within tolerance)", 5: "Coherence exceeding baseline"}
+LABELS = {"class": CLASSES, "rri": RRI_CLASSES,
           "status": {**STATUS, 255: "NoData"}, "evidence": {**EVIDENCE, 255: "NoData"},
           "reason": {**REASONS, 255: "NoData"}}
 
@@ -185,9 +193,18 @@ def classify_series(y, obs, c):
         quality[:] |= 16
     quality[usable & (np.abs(modeled_final - late) > c.OBSERVATION_DISAGREEMENT_TOLERANCE)] |= 32
 
-    value, rri_class, rri_status, _, _ = calculate(
+    value, _, rri_status, _, _ = calculate(
         B, trough, late, disturbed, support, stable, np.ones(n, bool), H, no_loss=classes == 4)
     rri_status[absent] = 0
+    # RRI interpretation classes follow the SAME rules as the zonal ITSA classes, so
+    # the two maps agree one-to-one. The numeric RRI value above is unchanged.
+    rri_class = np.zeros(n, "uint8")
+    rri_class[recovered & (late > B + tol)] = 5        # coherence exceeding baseline
+    rri_class[recovered & (late <= B + tol)] = 4       # return to baseline (within tolerance)
+    rri_class[partial] = 3                             # partial coherence recovery
+    rri_class[not_recovered & (late >= trough)] = 2    # no measurable recovery (< MIN_RECOVERY_IMPROVEMENT)
+    rri_class[not_recovered & (late < trough)] = 1     # further coherence degradation
+    rri_class[decline] = 1                             # post-event decline without event-pair loss
     metrics = dict(baseline=B, event_value=E, early_post=early, late_post=late, trough=trough,
                    observed_event_loss=event_loss, modeled_level_loss=modeled_loss,
                    early_deficit=early_deficit, late_deficit=late_deficit, loss_threshold=H,
@@ -497,6 +514,15 @@ def run_zonal(run_root, c, replace=False):
     if previous and not replace:
         raise FileExistsError(f"{len(previous)} Zonal_* files already exist in {run_root}; "
                               "pass replace=True (run_zonal.py --replace) to regenerate them.")
+    locked = []
+    for p in previous:  # check every file first so a locked file never leaves a half-deleted run
+        try:
+            with open(p, "r+b"):
+                pass
+        except PermissionError:
+            locked.append(p.name)
+    if locked:
+        raise PermissionError(f"Close these files (e.g. remove the layers in QGIS) and retry: {sorted(set(locked))}")
     for p in previous:
         p.unlink()
     with rasterio.open(rasters / "Aligned_Coherence_Observations.tif") as src:
