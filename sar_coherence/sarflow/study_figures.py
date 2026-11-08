@@ -11,7 +11,7 @@ from matplotlib.patches import Patch
 import numpy as np
 import pandas as pd
 from .recovery import CLASSES
-from .recovery_io import COLORS
+from .recovery_io import COLORS, RRI_COLORS
 from .rri import INTERPRETATION
 from .temporal import day_offsets
 
@@ -69,7 +69,7 @@ def itsa_graph(rows,result,obs,directory,title,c):
 
 def map_classes(array,member,directory,title,c,method='ITSA'):
     labels=CLASSES if method=='ITSA' else {0:'Undefined RRI',**{k:v for k,v in INTERPRETATION.items() if k}}
-    colors=[np.array(COLORS[i])/255 for i in range(6)] if method=='ITSA' else ['#d8dde2','#c73a49','#8c78a3','#f4c95d','#167c80','#245a8d']
+    colors=[np.array((COLORS if method=='ITSA' else RRI_COLORS)[i])/255 for i in range(6)]
     fig,ax=plt.subplots(figsize=(8,7),layout='constrained')
     view=np.ma.array(array,mask=~member)
     ax.imshow(view,cmap=ListedColormap(colors),norm=BoundaryNorm(np.arange(-.5,6),6),interpolation='nearest')
@@ -90,7 +90,7 @@ def rri_graph(values,classes,status,member,directory,title,c):
         axes[0].axvline(x,color='.5',ls=':',lw=.8)
     axes[0].set(xlabel='Final observation RRI (unclipped)',ylabel='Eligible raw pixels')
     counts=np.bincount(classes[valid],minlength=6)[1:]
-    axes[1].bar(np.arange(5),counts,color=['#c73a49','#8c78a3','#f4c95d','#167c80','#245a8d'])
+    axes[1].bar(np.arange(5),counts,color=[np.array(RRI_COLORS[i])/255 for i in range(1,6)])
     axes[1].set_xticks(np.arange(5),['Further\ndegradation','No measurable\nrecovery','Partial\nrecovery','Baseline\nrecovery','Above baseline\nrecovery'],rotation=20,ha='right')
     axes[1].set(ylabel='Eligible raw pixels',xlabel='Independent RRI interpretation')
     fig.suptitle(title+f'\nRRI valid {valid.sum():,} of {member.sum():,} study pixels')

@@ -5,8 +5,15 @@ import rasterio
 from .spatial import export_profile
 from .recovery import CLASSES, QUALITY, REASONS
 
-COLORS = {0: (0, 0, 0, 0), 1: (22, 124, 128, 255), 2: (244, 201, 93, 255),
-          3: (199, 58, 73, 255), 4: (216, 221, 226, 255), 5: (140, 120, 163, 255)}
+# One colour per outcome, shared by every recovery map (ITSA pixel/object/zonal and RRI):
+# dark green recovered, light green partial, red not recovered, blue no loss, grey indeterminate.
+COLORS = {0: (0, 0, 0, 0), 1: (26, 150, 65, 255), 2: (166, 217, 106, 255),
+          3: (215, 25, 28, 255), 4: (44, 123, 182, 255), 5: (189, 189, 189, 255)}
+# RRI interpretation codes mapped to the same outcome colours:
+# 1 further degradation / 2 no measurable recovery -> red, 3 partial -> light green,
+# 4 return to baseline / 5 exceeding baseline -> dark green.
+RRI_COLORS = {0: (0, 0, 0, 0), 1: (215, 25, 28, 255), 2: (215, 25, 28, 255),
+              3: (166, 217, 106, 255), 4: (26, 150, 65, 255), 5: (26, 150, 65, 255)}
 METRICS = ("baseline", "modeled_level_loss", "observed_event_loss", "post_slope",
            "modeled_initial", "modeled_final", "baseline_deficit", "modeled_progress",
            "recovery_fraction", "crossing_days", "adaptive_loss_threshold", "rmse",
